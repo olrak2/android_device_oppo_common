@@ -29,6 +29,7 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.media.AudioManager;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraAccessException;
@@ -38,6 +39,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
+import android.os.SystemProperties;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemClock;
@@ -75,7 +77,9 @@ public class KeyHandler implements DeviceKeyHandler {
     private static final int MODE_ALARMS_ONLY = 601;
     private static final int MODE_PRIORITY_ONLY = 602;
     private static final int MODE_NONE = 603;
-
+    private static final int MODE_VIBRATE = 604;
+    private static final int MODE_RING = 605;
+	
     private static final int GESTURE_WAKELOCK_DURATION = 3000;
 
     private static final int[] sSupportedGestures = new int[] {
@@ -94,9 +98,12 @@ public class KeyHandler implements DeviceKeyHandler {
         sSupportedSliderModes.put(MODE_PRIORITY_ONLY,
                 Settings.Global.ZEN_MODE_IMPORTANT_INTERRUPTIONS);
         sSupportedSliderModes.put(MODE_NONE, Settings.Global.ZEN_MODE_OFF);
+        sSupportedSliderModes.put(MODE_VIBRATE, AudioManager.RINGER_MODE_VIBRATE);
+        sSupportedSliderModes.put(MODE_RING, AudioManager.RINGER_MODE_NORMAL);
     }
 
     private final Context mContext;
+    private final AudioManager mAudioManager;
     private final PowerManager mPowerManager;
     private KeyguardManager mKeyguardManager;
     private final NotificationManager mNotificationManager;
@@ -115,6 +122,7 @@ public class KeyHandler implements DeviceKeyHandler {
     public KeyHandler(Context context) {
         mContext = context;
         mPowerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        mAudioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         mNotificationManager
                 = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         mEventHandler = new EventHandler();
@@ -254,8 +262,13 @@ public class KeyHandler implements DeviceKeyHandler {
         }
 
         if (isSliderModeSupported) {
-            mNotificationManager.setZenMode(sSupportedSliderModes.get(scanCode), null, TAG);
-            doHapticFeedback();
+			if (scanCode == MODE_VIBRATE || scanCode == MODE_RING) {
+				 mAudioManager.setRingerModeInternal(sSupportedSliderModes.get(scanCode));
+				doHapticFeedback();
+			}else{
+				mNotificationManager.setZenMode(sSupportedSliderModes.get(scanCode), null, TAG);
+				doHapticFeedback();
+			}
         } else if (!mEventHandler.hasMessages(GESTURE_REQUEST)) {
             Message msg = getMessageForKeyEvent(scanCode);
             boolean defaultProximity = mContext.getResources().getBoolean(
@@ -271,7 +284,7 @@ public class KeyHandler implements DeviceKeyHandler {
         }
         return true;
     }
-
+	
     private Message getMessageForKeyEvent(int scancode) {
         Message msg = mEventHandler.obtainMessage(GESTURE_REQUEST);
         msg.arg1 = scancode;
